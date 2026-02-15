@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sign Language Translator</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+  <div class="app">
+    <h1>🤟 Sign Language Translator</h1>
+
+    <!-- CAMERA SECTION -->
+    <div class="section">
+      <h2>Camera Control</h2>
+
+      <div class="controls" style="text-align:center;">
+        <button onclick="startCamera()">Start Camera</button>
+        <button onclick="stopCamera()">Stop Camera</button>
+      </div>
+
+      <video id="video" autoplay muted></video>
+      <div id="cameraStatus" class="status">Camera not started</div>
+    </div>
+    <canvas id="canvas" width="400" height="300"></canvas>
+
+    <!-- GESTURE SECTION -->
+    <div class="section">
+      <h2>Gesture Detection</h2>
+
+      <div class="controls" style="text-align:center;">
+        <button onclick="detectGesture()">Detect Gesture</button>
+      </div>
+
+      <div id="gestureResult" class="result">
+        No gesture detected
+      </div>
+      <hr style="margin:20px 0">
+
+<h2>Voice Control</h2>
+
+<div class="controls" style="text-align:center;">
+  <button onclick="startListening()">Start Listening</button>
+  <button onclick="stopListening()">Stop Listening</button>
+  <button onclick="speakResult()">Speak Result</button>
+</div>
+
+<div id="voiceStatus" class="status">Voice idle</div>
+<div id="voiceText" class="result">No voice input yet</div>
+
+    </div>
+
+    <footer>
+      Designed for accessibility • High contrast • Large text
+    </footer>
+  </div>
+
+<script>
+  let cameraInstance = null;
+let mediaStream = null;
+
+async function startCamera() {
+  const status = document.getElementById("cameraStatus");
+
+  if (cameraInstance) {
+    status.innerText = "Camera already running";
+    return;
+  }
+
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = mediaStream;
+
+    cameraInstance = new Camera(video, {
+      onFrame: async () => {
+        await hands.send({ image: video });
+      },
+      width: 400,
+      height: 300
+    });
+
+    cameraInstance.start();
+    status.innerText = "Camera started";
+  } catch (e) {
+    status.innerText = "Camera permission denied";
+  }
+}
+
+
+  function stopCamera() {
+  const status = document.getElementById("cameraStatus");
+
+  if (cameraInstance) {
+    cameraInstance.stop();
+    cameraInstance = null;
+  }
+
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop());
+    mediaStream = null;
+  }
+
+  video.srcObject = null;
+  status.innerText = "Camera stopped";
+}
+  function fingerUp(tip, pip) {
+  return tip.y < pip.y;
+}
+
+let lastOpenTime = 0;
+let blinkCount = 0;
+
+function fingerUp(tip, pip) {
+  return tip.y < pip.y;
+}
+
+function detectGesture(lm) {
+  const thumb = fingerUp(lm[4], lm[3]);
+  const index = fingerUp(lm[8], lm[6]);
+  const middle = fingerUp(lm[12], lm[10]);
+  const ring = fingerUp(lm[16], lm[14]);
+  const pinky = fingerUp(lm[20], lm[18]);
+
+  const fingersUp = [thumb, index, middle, ring, pinky]
+    .filter(Boolean).length;
+
+  const now = Date.now();
+
+  // -------- NUMBER DETECTION --------
+  if (index && !middle && !ring && !pinky && !thumb) return "1️⃣ One";
+  if (index && middle && !ring && !pinky && !thumb) return "2️⃣ Two";
+  if (!index && middle && ring && pinky && !thumb) return "3️⃣ Three";
+  if (index && middle && ring && pinky && !thumb) return "4️⃣ Four";
+  if (thumb && index && middle && ring && pinky) {
+    // blinking logic for 10
+    if (now - lastOpenTime < 700) {
+      blinkCount++;
+    } else {
+      blinkCount = 1;
+    }
+
+    lastOpenTime = now;
+
+    if (blinkCount >= 2) {
+      blinkCount = 0;
+      return "🔟 Ten";
+    }
+
+    return "5️⃣ Five";
+  }
+
+  if (thumb && !index && !middle && !ring && !pinky) return "6️⃣ Six";
+  if (thumb && index && !middle && !ring && !pinky) return "7️⃣ Seven";
+  if (thumb && index && middle && !ring && !pinky) return "8️⃣ Eight";
+  if (thumb && index && middle && ring && !pinky) return "9️⃣ Nine";
+
+  return "Gesture not recognized";
+}
+
+
+</script>
+<script>
+  // ---------- SPEECH TO TEXT ----------
+  let recognition;
+  let listening = false;
+
+  function startListening() {
+    const status = document.getElementById("voiceStatus");
+    const output = document.getElementById("voiceText");
+
+    if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+      status.innerText = "Speech recognition not supported";
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onstart = () => {
+      listening = true;
+      status.innerText = "Listening...";
+    };
+
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      output.innerText = transcript;
+    };
+
+    recognition.onerror = () => {
+      status.innerText = "Voice error";
+    };
+
+    recognition.onend = () => {
+      listening = false;
+      status.innerText = "Stopped listening";
+    };
+
+    recognition.start();
+  }
+
+  function stopListening() {
+    const status = document.getElementById("voiceStatus");
+    if (recognition && listening) {
+      recognition.stop();
+      status.innerText = "Stopped listening";
+    }
+  }
+
+  // ---------- TEXT TO SPEECH ----------
+  function speakResult() {
+    const text = document.getElementById("gestureResult").innerText;
+    if (!text || text.includes("No gesture")) return;
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    utterance.rate = 1;
+    speechSynthesis.speak(utterance);
+  }
+
+  const videoEl = document.getElementById("video");
+const canvasEl = document.getElementById("canvas");
+const ctx = canvasEl.getContext("2d");
+const gestureOutput = document.getElementById("gestureResult");
+
+const hands = new Hands({
+  locateFile: (file) =>
+    `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+  maxNumHands: 1,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7
+});
+
+hands.onResults((results) => {
+  ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+  ctx.drawImage(results.image, 0, 0, canvasEl.width, canvasEl.height);
+
+  if (results.multiHandLandmarks) {
+    for (const landmarks of results.multiHandLandmarks) {
+      drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: "#00FF00" });
+      drawLandmarks(ctx, landmarks, { color: "#FF0000" });
+
+      const gesture = detectGesture(landmarks);
+      gestureOutput.innerHTML = `Gesture: <b>${gesture}</b>`;
+    }
+  }
+});
+</script>
+<script>
+function fingerUp(tip, pip) {
+  return tip.y < pip.y;
+}
+
+function detectGesture(lm) {
+  const thumb = fingerUp(lm[4], lm[3]);
+  const index = fingerUp(lm[8], lm[6]);
+  const middle = fingerUp(lm[12], lm[10]);
+  const ring = fingerUp(lm[16], lm[14]);
+  const pinky = fingerUp(lm[20], lm[18]);
+
+  if (index && !middle && !ring && !pinky) return "Point / One";
+  if (index && middle && !ring && !pinky) return "Two";
+  if (index && middle && ring && pinky) return "Open Hand";
+  if (!index && !middle && !ring && !pinky) return "Fist";
+
+  return "Unknown";
+}
+</script>
+
+
+</body>
+</html>
